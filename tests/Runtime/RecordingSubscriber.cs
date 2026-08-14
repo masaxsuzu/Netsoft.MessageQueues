@@ -16,16 +16,19 @@ public sealed class RecordingSubscriber : IMessageSubscriber
 
     private int _failuresRemaining;
 
-    public RecordingSubscriber(string topic, string name, int failFirstAttempts = 0)
+    public RecordingSubscriber(string topic, string name, int failFirstAttempts = 0, int lanes = 1)
     {
         Topic = Topic.From(topic);
         Name = SubscriptionName.From(name);
         _failuresRemaining = failFirstAttempts;
+        Lanes = lanes;
     }
 
     public Topic Topic { get; }
 
     public SubscriptionName Name { get; }
+
+    public int Lanes { get; }
 
     public Task HandleAsync(Message message, int attempt, CancellationToken cancellationToken)
     {

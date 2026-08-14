@@ -9,10 +9,11 @@ namespace Netsoft.MessageQueues.Runtime;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>ループは購読ごとに 1 本、増やさない。</b>同じ購読の中を並列にすると
-/// 配送の順序が消え、取得の競り合いも生まれる。並列にしたいのは購読どうしで、
-/// それはループが購読の数だけあることで既に得られている ── 遅い購読者が
-/// 他の購読を巻き込まない。
+/// <b>ループはレーンごとに 1 本、レーンの中では増やさない。</b>レーンの中を並列にすると
+/// 順序の約束の単位が消え、取得の競り合いも生まれる。並列はレーンの数
+/// （<see cref="IMessageSubscriber.Lanes"/>、既定 1）で決まり、メッセージは
+/// パーティションのハッシュでレーンへ振り分けられる ── 同じキーは同じレーンなので、
+/// レーンの中の直列がそのまま「同じキーの中は発行順」になる。
 /// </para>
 /// <para>
 /// at-least-once はループの形そのもの。取得 → 処理 → 確認、の順で、
@@ -55,25 +56,30 @@ public sealed class DeliveryEngine
     }
 
     /// <summary>
-    /// 全購読の配送ループを走らせる。<paramref name="cancellationToken"/> が
+    /// 全購読・全レーンの配送ループを走らせる。<paramref name="cancellationToken"/> が
     /// 取り消されるまで返らない。取り消しで正常に完了する（例外にしない）。
     /// </summary>
     public Task RunAsync(CancellationToken cancellationToken) =>
-        Task.WhenAll(_registry.All.Select(s => RunSubscriptionAsync(s, cancellationToken)));
+        Task.WhenAll(_registry.All.SelectMany(
+            s => Enumerable.Range(0, s.Lanes).Select(
+                index => RunLaneAsync(s, new Lane(index, s.Lanes), cancellationToken))));
 
-    private async Task RunSubscriptionAsync(IMessageSubscriber subscriber, CancellationToken cancellationToken)
+    private async Task RunLaneAsync(
+        IMessageSubscriber subscriber,
+        Lane lane,
+        CancellationToken cancellationToken)
     {
         try
         {
             while (true)
             {
                 ClaimedDelivery? claimed = await _store
-                    .TryClaimNextAsync(subscriber.Topic, subscriber.Name, cancellationToken)
+                    .TryClaimNextAsync(subscriber.Topic, subscriber.Name, lane, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (claimed is null)
                 {
-                    await _signal.WaitAsync(subscriber.Topic, subscriber.Name, cancellationToken)
+                    await _signal.WaitAsync(subscriber.Topic, subscriber.Name, lane.Index, cancellationToken)
                         .ConfigureAwait(false);
                     continue;
                 }

@@ -44,11 +44,13 @@ public sealed class SqliteMessageStore : IMessageStore
             PRAGMA journal_mode=WAL;
 
             CREATE TABLE IF NOT EXISTS Messages (
-                Seq        INTEGER PRIMARY KEY AUTOINCREMENT,
-                Id         TEXT NOT NULL UNIQUE,
-                Topic      TEXT NOT NULL,
-                Payload    TEXT NOT NULL,
-                EnqueuedAt TEXT NOT NULL
+                Seq           INTEGER PRIMARY KEY AUTOINCREMENT,
+                Id            TEXT NOT NULL UNIQUE,
+                Topic         TEXT NOT NULL,
+                Payload       TEXT NOT NULL,
+                EnqueuedAt    TEXT NOT NULL,
+                PartitionKey  TEXT,
+                PartitionHash INTEGER NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS Deliveries (
@@ -94,13 +96,20 @@ public sealed class SqliteMessageStore : IMessageStore
             insertMessage.Transaction = transaction;
             insertMessage.CommandText =
                 """
-                INSERT INTO Messages (Id, Topic, Payload, EnqueuedAt)
-                VALUES (@id, @topic, @payload, @enqueuedAt);
+                INSERT INTO Messages (Id, Topic, Payload, EnqueuedAt, PartitionKey, PartitionHash)
+                VALUES (@id, @topic, @payload, @enqueuedAt, @partitionKey, @partitionHash);
                 """;
             insertMessage.Parameters.AddWithValue("@id", message.Id.Value);
             insertMessage.Parameters.AddWithValue("@topic", message.Topic.Value);
             insertMessage.Parameters.AddWithValue("@payload", message.Payload.Json);
             insertMessage.Parameters.AddWithValue("@enqueuedAt", SqliteTimestamp.ToText(message.EnqueuedAt));
+            insertMessage.Parameters.AddWithValue(
+                "@partitionKey", message.Key.IsEmpty ? DBNull.Value : message.Key.Value);
+
+            // ハッシュはここで永続化する。取得のたびに計算し直す形にすると、
+            // ハッシュの定義を変えた瞬間に既存メッセージのレーンが動き、
+            // 「同じメッセージは同じレーン」が更新をまたいで破れる。
+            insertMessage.Parameters.AddWithValue("@partitionHash", message.PartitionHash);
             await insertMessage.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -126,13 +135,14 @@ public sealed class SqliteMessageStore : IMessageStore
     public async Task<ClaimedDelivery?> TryClaimNextAsync(
         Topic topic,
         SubscriptionName subscription,
+        Lane lane,
         CancellationToken cancellationToken)
     {
         await using SqliteConnection connection =
             await SqliteConnections.OpenAsync(_connectionString, cancellationToken).ConfigureAwait(false);
 
         // 選択と試行回数の更新を 1 つの取引にする（IMessageStore の指定）。
-        // 配送ループは購読ごとに 1 本（Runtime 側の設計）なので同じ購読で取得が
+        // 配送ループはレーンごとに 1 本（Runtime 側の設計）なので同じレーンで取得が
         // 競ることは無いが、それはこの層が知らなくてよい前提 ── 取引にしておけば
         // 呼び出し側の本数が変わってもここは壊れない。
         await using SqliteTransaction transaction =
@@ -141,6 +151,7 @@ public sealed class SqliteMessageStore : IMessageStore
         string? messageId = null;
         string? payload = null;
         string? enqueuedAt = null;
+        PartitionKey key = default;
         int attemptCount = 0;
 
         await using (SqliteCommand select = connection.CreateCommand())
@@ -148,18 +159,21 @@ public sealed class SqliteMessageStore : IMessageStore
             select.Transaction = transaction;
             select.CommandText =
                 """
-                SELECT m.Id, m.Payload, m.EnqueuedAt, d.AttemptCount
+                SELECT m.Id, m.Payload, m.EnqueuedAt, m.PartitionKey, d.AttemptCount
                 FROM Deliveries d
                 JOIN Messages m ON m.Id = d.MessageId
                 WHERE m.Topic = @topic
                   AND d.Subscription = @subscription
                   AND d.Status = @pending
+                  AND (m.PartitionHash % @laneCount) = @laneIndex
                 ORDER BY m.Seq
                 LIMIT 1;
                 """;
             select.Parameters.AddWithValue("@topic", topic.Value);
             select.Parameters.AddWithValue("@subscription", subscription.Value);
             select.Parameters.AddWithValue("@pending", SqliteDeliveryStatus.ToText(DeliveryStatus.Pending));
+            select.Parameters.AddWithValue("@laneCount", lane.Count);
+            select.Parameters.AddWithValue("@laneIndex", lane.Index);
 
             await using SqliteDataReader reader =
                 await select.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -168,7 +182,8 @@ public sealed class SqliteMessageStore : IMessageStore
                 messageId = reader.GetString(0);
                 payload = reader.GetString(1);
                 enqueuedAt = reader.GetString(2);
-                attemptCount = reader.GetInt32(3);
+                key = reader.IsDBNull(3) ? default : PartitionKey.From(reader.GetString(3));
+                attemptCount = reader.GetInt32(4);
             }
         }
 
@@ -198,7 +213,8 @@ public sealed class SqliteMessageStore : IMessageStore
             MessageId.From(messageId),
             topic,
             MessagePayload.From(payload!),
-            SqliteTimestamp.FromText(enqueuedAt!));
+            SqliteTimestamp.FromText(enqueuedAt!),
+            key);
 
         return new ClaimedDelivery(message, subscription, attemptCount + 1);
     }

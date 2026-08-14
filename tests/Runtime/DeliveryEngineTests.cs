@@ -128,6 +128,68 @@ public sealed class DeliveryEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task レーンを増やしても同じキーのメッセージは発行順に届く()
+    {
+        SqliteMessageStore store = await _database.OpenStoreAsync();
+        RecordingSubscriber billing = new("orders", "billing", lanes: 4);
+        (MessagePublisher publisher, DeliveryEngine engine) = Build(store, [billing]);
+
+        PartitionKey k1 = PartitionKey.From("order-1");
+        PartitionKey k2 = PartitionKey.From("order-2");
+
+        await RunEngineAsync(engine, async () =>
+        {
+            List<MessageId> ofK1 = [];
+            List<MessageId> ofK2 = [];
+            for (int i = 0; i < 3; i++)
+            {
+                ofK1.Add(await publisher.PublishAsync(Orders, MessagePayload.From($"{i}"), k1, CancellationToken.None));
+                ofK2.Add(await publisher.PublishAsync(Orders, MessagePayload.From($"{i}"), k2, CancellationToken.None));
+            }
+
+            // 到着はレーンをまたいで交錯しうるので、全体では並べず、キーごとに並びを見る。
+            List<Message> received = [];
+            for (int i = 0; i < 6; i++)
+            {
+                received.Add((await billing.NextAsync()).Message);
+            }
+
+            Assert.Equal(ofK1, received.Where(m => m.Key == k1).Select(m => m.Id));
+            Assert.Equal(ofK2, received.Where(m => m.Key == k2).Select(m => m.Id));
+        });
+    }
+
+    [Fact]
+    public async Task 詰まったレーンは他のレーンの配送を止めない()
+    {
+        SqliteMessageStore store = await _database.OpenStoreAsync();
+        LaneBlockingSubscriber billing = new(blockOn: PartitionKey.From("blocked"));
+
+        // 別のレーンへ落ちるキーを探して使う。ハッシュは安定なので、この探索も決定的。
+        int blockedLane = Lane.IndexFor(billing.BlockOn.Hash, billing.Lanes);
+        PartitionKey free = Enumerable.Range(0, 1000)
+            .Select(i => PartitionKey.From($"free-{i}"))
+            .First(k => Lane.IndexFor(k.Hash, billing.Lanes) != blockedLane);
+
+        (MessagePublisher publisher, DeliveryEngine engine) = Build(store, [billing]);
+
+        await RunEngineAsync(engine, async () =>
+        {
+            await publisher.PublishAsync(Orders, MessagePayload.From("{}"), billing.BlockOn, CancellationToken.None);
+            await billing.BlockedEntered;
+
+            MessageId freeId = await publisher.PublishAsync(Orders, MessagePayload.From("{}"), free, CancellationToken.None);
+
+            // 塞がったレーンを解放していないのに届く ── レーンが独立している証拠。
+            Message received = await billing.NextAsync();
+            Assert.Equal(freeId, received.Id);
+
+            billing.Release();
+            Assert.Equal(billing.BlockOn, (await billing.NextAsync()).Key);
+        });
+    }
+
+    [Fact]
     public async Task 停止までに確認できなかった配送は次のエンジンが引き継ぐ()
     {
         SqliteMessageStore store = await _database.OpenStoreAsync();
@@ -207,6 +269,51 @@ public sealed class DeliveryEngineTests : IDisposable
             }
 
             await Task.Delay(PollInterval, timeout.Token);
+        }
+    }
+
+    /// <summary>指定したキーのメッセージだけ、解放されるまで処理を止める購読者。レーン 2 本。</summary>
+    private sealed class LaneBlockingSubscriber : IMessageSubscriber
+    {
+        private readonly TaskCompletionSource _blockedEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private readonly TaskCompletionSource _release =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private readonly System.Threading.Channels.Channel<Message> _received =
+            System.Threading.Channels.Channel.CreateUnbounded<Message>();
+
+        public LaneBlockingSubscriber(PartitionKey blockOn) => BlockOn = blockOn;
+
+        public PartitionKey BlockOn { get; }
+
+        public Topic Topic => Orders;
+
+        public SubscriptionName Name => SubscriptionName.From("billing");
+
+        public int Lanes => 2;
+
+        /// <summary>塞がる側のメッセージが HandleAsync に入ったら完了する。</summary>
+        public Task BlockedEntered => _blockedEntered.Task;
+
+        public void Release() => _release.TrySetResult();
+
+        public async Task HandleAsync(Message message, int attempt, CancellationToken cancellationToken)
+        {
+            if (message.Key == BlockOn)
+            {
+                _blockedEntered.TrySetResult();
+                await _release.Task.WaitAsync(cancellationToken);
+            }
+
+            _received.Writer.TryWrite(message);
+        }
+
+        public async Task<Message> NextAsync()
+        {
+            using CancellationTokenSource timeout = new(Timeout);
+            return await _received.Reader.ReadAsync(timeout.Token);
         }
     }
 

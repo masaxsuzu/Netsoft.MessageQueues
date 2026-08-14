@@ -10,7 +10,12 @@ namespace Netsoft.MessageQueues.Domain;
 /// </remarks>
 public sealed record Message
 {
-    public Message(MessageId id, Topic topic, MessagePayload payload, DateTimeOffset enqueuedAt)
+    public Message(
+        MessageId id,
+        Topic topic,
+        MessagePayload payload,
+        DateTimeOffset enqueuedAt,
+        PartitionKey key = default)
     {
         if (id.IsEmpty)
         {
@@ -31,6 +36,7 @@ public sealed record Message
         Topic = topic;
         Payload = payload;
         EnqueuedAt = enqueuedAt;
+        Key = key;
     }
 
     /// <summary>メッセージの識別子。</summary>
@@ -44,4 +50,17 @@ public sealed record Message
 
     /// <summary>発行された時刻。</summary>
     public DateTimeOffset EnqueuedAt { get; }
+
+    /// <summary>パーティションキー。無くてもよい（<see cref="PartitionKey.IsEmpty"/>）。</summary>
+    public PartitionKey Key { get; }
+
+    /// <summary>
+    /// レーンの割り当てに使うハッシュ。キーがあればキーから、無ければ識別子から決まる。
+    /// </summary>
+    /// <remarks>
+    /// キーの無いメッセージを 1 つの固定レーンへ寄せない。寄せると、キーを使う購読で
+    /// 「キー無しのメッセージだけが 1 レーンに詰まる」偏りになる。識別子で散らせば
+    /// 順序を約束しないもの同士が全レーンへ均される。
+    /// </remarks>
+    public long PartitionHash => Key.IsEmpty ? StableHash.OfUtf8(Id.Value) : Key.Hash;
 }

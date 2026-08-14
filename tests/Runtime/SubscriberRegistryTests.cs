@@ -35,6 +35,27 @@ public sealed class SubscriberRegistryTests
         ]));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(SubscriberRegistry.MaxLanes + 1)]
+    public void レーン数が範囲外の購読者は登録できない(int lanes)
+    {
+        Assert.Throws<ArgumentException>(() => new SubscriberRegistry([
+            new RecordingSubscriber("orders", "billing", lanes: lanes),
+        ]));
+    }
+
+    [Fact]
+    public void レーン数が上限ちょうどの購読者は登録できる()
+    {
+        SubscriberRegistry registry = new([
+            new RecordingSubscriber("orders", "billing", lanes: SubscriberRegistry.MaxLanes),
+        ]);
+
+        Assert.Single(registry.All);
+    }
+
     [Fact]
     public void Forはそのトピックの購読者だけを返す()
     {
