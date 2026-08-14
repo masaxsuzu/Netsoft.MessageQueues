@@ -10,4 +10,33 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!--
+    push を止めるフック（tools/git-hooks/pre-push）を、ビルドの時点で入れる。
+
+    git は「リポジトリに置いた設定」を読まない（clone しただけで任意のコードが
+    走るのを防ぐため）ので、core.hooksPath は各 clone で設定するしかない。
+    tools/gate.sh も設定するが、**設定するのがゲート自身だと、一度もゲートを
+    通していない clone にはフックが入らない**。Netsoft.Jobs ではその状態の初回 push が
+    素通りしていた ── ビルドに乗せると、空白は「一度もビルドしていない clone」まで縮む。
+    そこには push する中身がまだ無い。どちらか通った方で入る。
+
+    .git が無いとき（tarball 展開、ソースだけの取り込み）は何もしない。
+    git が居ないときも ContinueOnError で素通りさせる ── フックの導入に失敗しても
+    ビルドは落とさない。落とすと、押せないだけで済むはずのものが作れなくもなる。
+
+    印を .git の下に置くのは、ビルドのたびにプロジェクト数ぶん git を起動しないため。
+  -->
+  <Target Name="ConfigureGitHooks"
+          BeforeTargets="Build"
+          Condition="Exists('$(MSBuildThisFileDirectory).git') And !Exists('$(MSBuildThisFileDirectory).git/netsoft-messagequeues-hooks-ok')">
+    <Exec Command="git config core.hooksPath tools/git-hooks"
+          WorkingDirectory="$(MSBuildThisFileDirectory)"
+          ContinueOnError="true"
+          StandardOutputImportance="low"
+          StandardErrorImportance="low" />
+    <Touch Files="$(MSBuildThisFileDirectory).git/netsoft-messagequeues-hooks-ok"
+           AlwaysCreate="true"
+           ContinueOnError="true" />
+  </Target>
+
 </Project>

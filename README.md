@@ -7,7 +7,8 @@
 - 1 つのメッセージを単一または複数の購読者へ配送できる（購読ごとに独立に進む）
 - **同じメッセージが 2 度届くことがある**（at-least-once）。購読者は冪等に書く
 - ペイロードは JSON で、UTF-8 で 64KB まで
-- 同じ購読の中の配送は発行順・直列
+- 順序は**パーティションキーごとに発行順**。既定（レーン 1 本）では購読全体が発行順で、
+  購読者が `Lanes` を増やすとキーを保ったまま並列になる（[docs/operating.md](./docs/operating.md)）
 
 ## 使う
 
@@ -49,6 +50,14 @@ await publisher.PublishAsync(
     MessagePayload.From("""{"orderId":42}"""),
     CancellationToken.None);
 
+// 順序を守りたい単位があるならパーティションキーを付ける。購読者が Lanes を
+// 増やして並列にしても、同じキーの中は発行順のまま（docs/operating.md）。
+await publisher.PublishAsync(
+    Topic.From("orders"),
+    MessagePayload.From("""{"orderId":42,"step":"paid"}"""),
+    PartitionKey.From("order-42"),
+    CancellationToken.None);
+
 // 終了時は取り消して待つ。確認前の配送は次の起動で再配送される。
 stop.Cancel();
 await run;
@@ -63,3 +72,6 @@ dotnet test
 
 **.NET 10 SDK が必要**（`global.json` で固定）。
 開発サイクル・規約は [docs/](./docs/) にある。入口は [CLAUDE.md](./CLAUDE.md)。
+
+**スキーマに互換コードは無い。** 更新をまたいでテーブルの形が変わったら、
+古い DB ファイルを消してから起動する（Netsoft.Jobs と同じ判断）。

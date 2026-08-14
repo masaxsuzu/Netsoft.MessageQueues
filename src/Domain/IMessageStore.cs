@@ -35,16 +35,19 @@ public interface IMessageStore
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// 指定された購読の、最も古い未配送のメッセージを 1 件取得し、試行回数を進める。
+    /// 指定された購読・レーンの、最も古い未配送のメッセージを 1 件取得し、試行回数を進める。
     /// 無ければ null。
     /// </summary>
     /// <remarks>
     /// 選択と試行回数の更新は 1 つの取引で行うこと。状態は Pending のまま動かさない
-    /// （<see cref="ClaimedDelivery"/> の注記）。
+    /// （<see cref="ClaimedDelivery"/> の注記）。レーンの絞り込みは
+    /// <see cref="Message.PartitionHash"/> をレーン数で割った余りで行う ── 同じメッセージは
+    /// 何度取得しても同じレーンへ落ちる。
     /// </remarks>
     Task<ClaimedDelivery?> TryClaimNextAsync(
         Topic topic,
         SubscriptionName subscription,
+        Lane lane,
         CancellationToken cancellationToken);
 
     /// <summary>

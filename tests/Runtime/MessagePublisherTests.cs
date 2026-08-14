@@ -32,7 +32,7 @@ public sealed class MessagePublisherTests : IDisposable
             Orders, MessagePayload.From("""{"orderId":42}"""), CancellationToken.None);
 
         // エンジンを介さず、ストアを直接読んで確かめる。
-        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, billing.Name, CancellationToken.None);
+        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, billing.Name, Lane.Single, CancellationToken.None);
         Assert.Equal(id, claimed!.Message.Id);
         Assert.Equal("""{"orderId":42}""", claimed.Message.Payload.Json);
     }
@@ -50,6 +50,22 @@ public sealed class MessagePublisherTests : IDisposable
         IReadOnlyList<Delivery> deliveries = await store.GetDeliveriesAsync(id, CancellationToken.None);
         Delivery delivery = Assert.Single(deliveries);
         Assert.Equal(billing.Name, delivery.Subscription);
+    }
+
+    [Fact]
+    public async Task パーティションキー付きで発行したメッセージはキーを保って届く()
+    {
+        SqliteMessageStore store = await _database.OpenStoreAsync();
+        RecordingSubscriber billing = new("orders", "billing");
+        MessagePublisher publisher = NewPublisher(store, new SubscriberRegistry([billing]));
+        PartitionKey key = PartitionKey.From("order-42");
+
+        MessageId id = await publisher.PublishAsync(
+            Orders, MessagePayload.From("{}"), key, CancellationToken.None);
+
+        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, billing.Name, Lane.Single, CancellationToken.None);
+        Assert.Equal(id, claimed!.Message.Id);
+        Assert.Equal(key, claimed.Message.Key);
     }
 
     [Fact]

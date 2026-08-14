@@ -36,9 +36,17 @@ public sealed class MessagePublisher : IMessagePublisher
     }
 
     /// <inheritdoc />
+    public Task<MessageId> PublishAsync(
+        Topic topic,
+        MessagePayload payload,
+        CancellationToken cancellationToken) =>
+        PublishAsync(topic, payload, default, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<MessageId> PublishAsync(
         Topic topic,
         MessagePayload payload,
+        PartitionKey key,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<IMessageSubscriber> subscribers = _registry.For(topic);
@@ -54,16 +62,19 @@ public sealed class MessagePublisher : IMessagePublisher
             MessageId.From(Guid.NewGuid().ToString("N")),
             topic,
             payload,
-            _timeProvider.GetUtcNow());
+            _timeProvider.GetUtcNow(),
+            key);
 
         await _store.AppendAsync(
             message,
             [.. subscribers.Select(s => s.Name)],
             cancellationToken).ConfigureAwait(false);
 
+        // 鳴らすのはメッセージの落ちるレーンだけ。レーン数は購読ごとに違うので、
+        // 落ちる先も購読ごとに計算する。
         foreach (IMessageSubscriber subscriber in subscribers)
         {
-            _signal.Set(topic, subscriber.Name);
+            _signal.Set(topic, subscriber.Name, Lane.IndexFor(message.PartitionHash, subscriber.Lanes));
         }
 
         return message.Id;

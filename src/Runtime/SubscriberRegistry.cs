@@ -20,10 +20,19 @@ namespace Netsoft.MessageQueues.Runtime;
 /// </remarks>
 public sealed class SubscriberRegistry
 {
+    /// <summary>1 つの購読が持てるレーン数の上限。</summary>
+    /// <remarks>
+    /// レーンは常駐のループ 1 本と合図の箱 1 つを伴うので、数に天井を置く。
+    /// 64 は Netsoft.Jobs が同時実行数に置いたのと同じ値で、単一コンピュータで
+    /// これを超える並列が要るなら、それはこの基盤の外の話になっている。
+    /// </remarks>
+    public const int MaxLanes = 64;
+
     private readonly IReadOnlyList<IMessageSubscriber> _subscribers;
 
     /// <exception cref="ArgumentException">
-    /// トピックか購読名が空の購読者、または同じ (トピック, 購読名) の購読者が複数居る場合。
+    /// トピックか購読名が空の購読者、同じ (トピック, 購読名) の購読者が複数居る場合、
+    /// またはレーン数が 1 未満か <see cref="MaxLanes"/> を超える場合。
     /// </exception>
     public SubscriberRegistry(IEnumerable<IMessageSubscriber> subscribers)
     {
@@ -38,6 +47,14 @@ public sealed class SubscriberRegistry
             {
                 throw new ArgumentException(
                     $"購読者 {subscriber.GetType().Name} のトピックまたは購読名が空です。",
+                    nameof(subscribers));
+            }
+
+            if (subscriber.Lanes is < 1 or > MaxLanes)
+            {
+                throw new ArgumentException(
+                    $"購読 ({subscriber.Topic}, {subscriber.Name}) のレーン数 {subscriber.Lanes} は" +
+                    $" 1 以上 {MaxLanes} 以下でなければなりません。",
                     nameof(subscribers));
             }
 

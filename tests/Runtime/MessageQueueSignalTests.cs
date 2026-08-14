@@ -15,10 +15,10 @@ public sealed class MessageQueueSignalTests
 
         // 発行（Set）が先、エンジンの待ちが後。この順でも即座に返ることが、
         // エンジンが安全網のポーリング無しで合図だけに頼れる根拠（型の注記）。
-        signal.Set(Orders, Billing);
+        signal.Set(Orders, Billing, 0);
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
-        await signal.WaitAsync(Orders, Billing, timeout.Token);
+        await signal.WaitAsync(Orders, Billing, 0, timeout.Token);
     }
 
     [Fact]
@@ -26,11 +26,23 @@ public sealed class MessageQueueSignalTests
     {
         MessageQueueSignal signal = new();
 
-        signal.Set(Orders, Billing);
+        signal.Set(Orders, Billing, 0);
 
         using CancellationTokenSource cancelled = new(TimeSpan.FromMilliseconds(100));
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            signal.WaitAsync(Orders, Audit, cancelled.Token));
+            signal.WaitAsync(Orders, Audit, 0, cancelled.Token));
+    }
+
+    [Fact]
+    public async Task 合図は名指ししたレーンにしか届かない()
+    {
+        MessageQueueSignal signal = new();
+
+        signal.Set(Orders, Billing, 0);
+
+        using CancellationTokenSource cancelled = new(TimeSpan.FromMilliseconds(100));
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            signal.WaitAsync(Orders, Billing, 1, cancelled.Token));
     }
 
     [Fact]
@@ -39,8 +51,8 @@ public sealed class MessageQueueSignalTests
         MessageQueueSignal signal = new();
 
         // 容量 1 なので 2 つ目からはあふれるが、待たされも例外にもならないこと。
-        signal.Set(Orders, Billing);
-        signal.Set(Orders, Billing);
-        signal.Set(Orders, Billing);
+        signal.Set(Orders, Billing, 0);
+        signal.Set(Orders, Billing, 0);
+        signal.Set(Orders, Billing, 0);
     }
 }

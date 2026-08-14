@@ -11,8 +11,10 @@ namespace Netsoft.MessageQueues.Runtime;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 箱は購読ごとに 1 つ。合図は購読を名指しで鳴らすので、待ち手どうしが
-/// 1 つの箱を取り合うことが無い。容量は 1 ── 各購読の待ち手は配送ループの
+/// 箱は購読×レーンごとに 1 つ。発行側はメッセージの落ちるレーンを名指しで鳴らすので、
+/// 待ち手どうしが 1 つの箱を取り合うことが無い ── 箱を購読で 1 つにすると、1 回の合図で
+/// 起きるのがどのレーンかが不定になり、メッセージの居ないレーンが起きて
+/// 目当てのレーンが眠ったまま、が起こる。容量は 1 ── 各レーンの待ち手は配送ループの
 /// 1 本だけ（<see cref="DeliveryEngine"/>）で、合図は「仕事があるかもしれない」以上の
 /// 情報を持たないから、同じ待ち手を 2 度起こす分は捨ててよい。
 /// あふれた分は捨てる（<see cref="BoundedChannelFullMode.DropWrite"/>）。
@@ -29,29 +31,34 @@ namespace Netsoft.MessageQueues.Runtime;
 /// </remarks>
 public sealed class MessageQueueSignal
 {
-    private readonly ConcurrentDictionary<(string Topic, string Subscription), Channel<byte>> _signals = new();
+    private readonly ConcurrentDictionary<(string Topic, string Subscription, int Lane), Channel<byte>> _signals = new();
 
     /// <summary>
-    /// 指定された購読への合図を鳴らす。箱が満杯（1 つ）なら何もしない。
+    /// 指定された購読・レーンへの合図を鳴らす。箱が満杯（1 つ）なら何もしない。
     /// </summary>
     /// <remarks>
     /// TryWrite は満杯でも待たずに false を返すだけ。発火元は発行の経路なので、
     /// エンジンの消費を発行が待つ形にしてはいけない。
     /// </remarks>
-    public void Set(Topic topic, SubscriptionName subscription) =>
-        ChannelFor(topic, subscription).Writer.TryWrite(0);
+    public void Set(Topic topic, SubscriptionName subscription, int laneIndex) =>
+        ChannelFor(topic, subscription, laneIndex).Writer.TryWrite(0);
 
     /// <summary>
-    /// 指定された購読への合図が鳴るまで待ち、1 つ消費する。既に鳴っていれば即座に返る。
+    /// 指定された購読・レーンへの合図が鳴るまで待ち、1 つ消費する。既に鳴っていれば即座に返る。
     /// </summary>
-    public async Task WaitAsync(Topic topic, SubscriptionName subscription, CancellationToken cancellationToken)
+    public async Task WaitAsync(
+        Topic topic,
+        SubscriptionName subscription,
+        int laneIndex,
+        CancellationToken cancellationToken)
     {
         // 値は見ない。合図は「発行があった」以上の情報を運ばない契約。
-        _ = await ChannelFor(topic, subscription).Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        _ = await ChannelFor(topic, subscription, laneIndex).Reader.ReadAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    private Channel<byte> ChannelFor(Topic topic, SubscriptionName subscription) =>
-        _signals.GetOrAdd((topic.Value, subscription.Value), static _ =>
+    private Channel<byte> ChannelFor(Topic topic, SubscriptionName subscription, int laneIndex) =>
+        _signals.GetOrAdd((topic.Value, subscription.Value, laneIndex), static _ =>
             Channel.CreateBounded<byte>(new BoundedChannelOptions(1)
             {
                 FullMode = BoundedChannelFullMode.DropWrite,

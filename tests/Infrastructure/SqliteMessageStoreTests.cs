@@ -45,7 +45,7 @@ public sealed class SqliteMessageStoreTests : IDisposable
         await store.AppendAsync(first, [Billing], CancellationToken.None);
         await store.AppendAsync(second, [Billing], CancellationToken.None);
 
-        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, Billing, CancellationToken.None);
+        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None);
 
         Assert.NotNull(claimed);
         Assert.Equal(first.Id, claimed.Message.Id);
@@ -61,8 +61,8 @@ public sealed class SqliteMessageStoreTests : IDisposable
         Message message = NewMessage("msg-1");
         await store.AppendAsync(message, [Billing], CancellationToken.None);
 
-        ClaimedDelivery? first = await store.TryClaimNextAsync(Orders, Billing, CancellationToken.None);
-        ClaimedDelivery? second = await store.TryClaimNextAsync(Orders, Billing, CancellationToken.None);
+        ClaimedDelivery? first = await store.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None);
+        ClaimedDelivery? second = await store.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None);
 
         Assert.Equal(message.Id, first!.Message.Id);
         Assert.Equal(message.Id, second!.Message.Id);
@@ -75,7 +75,7 @@ public sealed class SqliteMessageStoreTests : IDisposable
     {
         SqliteMessageStore store = await _database.OpenStoreAsync();
 
-        Assert.Null(await store.TryClaimNextAsync(Orders, Billing, CancellationToken.None));
+        Assert.Null(await store.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None));
     }
 
     [Fact]
@@ -85,8 +85,8 @@ public sealed class SqliteMessageStoreTests : IDisposable
         Message message = NewMessage("msg-1");
         await store.AppendAsync(message, [Billing], CancellationToken.None);
 
-        Assert.Null(await store.TryClaimNextAsync(Topic.From("payments"), Billing, CancellationToken.None));
-        Assert.Null(await store.TryClaimNextAsync(Orders, Audit, CancellationToken.None));
+        Assert.Null(await store.TryClaimNextAsync(Topic.From("payments"), Billing, Lane.Single, CancellationToken.None));
+        Assert.Null(await store.TryClaimNextAsync(Orders, Audit, Lane.Single, CancellationToken.None));
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public sealed class SqliteMessageStoreTests : IDisposable
 
         await store.MarkDeliveredAsync(message.Id, Billing, CancellationToken.None);
 
-        Assert.Null(await store.TryClaimNextAsync(Orders, Billing, CancellationToken.None));
+        Assert.Null(await store.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None));
         IReadOnlyList<Delivery> deliveries = await store.GetDeliveriesAsync(message.Id, CancellationToken.None);
         Assert.Equal(DeliveryStatus.Delivered, Assert.Single(deliveries).Status);
     }
@@ -112,8 +112,8 @@ public sealed class SqliteMessageStoreTests : IDisposable
 
         await store.MarkDeliveredAsync(message.Id, Billing, CancellationToken.None);
 
-        Assert.Null(await store.TryClaimNextAsync(Orders, Billing, CancellationToken.None));
-        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, Audit, CancellationToken.None);
+        Assert.Null(await store.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None));
+        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, Audit, Lane.Single, CancellationToken.None);
         Assert.Equal(message.Id, claimed!.Message.Id);
     }
 
@@ -141,9 +141,65 @@ public sealed class SqliteMessageStoreTests : IDisposable
         // 同じファイルを別インスタンスで開き直す。プロセス再起動の相当。
         SqliteMessageStore second = await _database.OpenStoreAsync();
 
-        ClaimedDelivery? claimed = await second.TryClaimNextAsync(Orders, Billing, CancellationToken.None);
+        ClaimedDelivery? claimed = await second.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None);
         Assert.Equal(message.Id, claimed!.Message.Id);
         Assert.Equal(message.Payload, claimed.Message.Payload);
+    }
+
+    [Fact]
+    public async Task 取得は自分のレーンへ落ちたメッセージだけを返す()
+    {
+        SqliteMessageStore store = await _database.OpenStoreAsync();
+        Message message = new(
+            MessageId.From("msg-1"),
+            Orders,
+            MessagePayload.From("{}"),
+            new DateTimeOffset(2026, 8, 14, 0, 0, 0, TimeSpan.Zero),
+            PartitionKey.From("order-42"));
+        await store.AppendAsync(message, [Billing], CancellationToken.None);
+
+        int home = Lane.IndexFor(message.PartitionHash, 2);
+        int other = 1 - home;
+
+        Assert.Null(await store.TryClaimNextAsync(Orders, Billing, new Lane(other, 2), CancellationToken.None));
+
+        ClaimedDelivery? claimed =
+            await store.TryClaimNextAsync(Orders, Billing, new Lane(home, 2), CancellationToken.None);
+        Assert.Equal(message.Id, claimed!.Message.Id);
+    }
+
+    [Fact]
+    public async Task キーの無いメッセージも識別子のレーンで取得できる()
+    {
+        SqliteMessageStore store = await _database.OpenStoreAsync();
+        Message message = NewMessage("msg-1");
+        await store.AppendAsync(message, [Billing], CancellationToken.None);
+
+        int home = Lane.IndexFor(message.PartitionHash, 2);
+        int other = 1 - home;
+
+        Assert.Null(await store.TryClaimNextAsync(Orders, Billing, new Lane(other, 2), CancellationToken.None));
+        ClaimedDelivery? claimed =
+            await store.TryClaimNextAsync(Orders, Billing, new Lane(home, 2), CancellationToken.None);
+        Assert.Equal(message.Id, claimed!.Message.Id);
+    }
+
+    [Fact]
+    public async Task パーティションキーは取得で往復する()
+    {
+        SqliteMessageStore store = await _database.OpenStoreAsync();
+        PartitionKey key = PartitionKey.From("order-42");
+        Message message = new(
+            MessageId.From("msg-1"),
+            Orders,
+            MessagePayload.From("{}"),
+            new DateTimeOffset(2026, 8, 14, 0, 0, 0, TimeSpan.Zero),
+            key);
+        await store.AppendAsync(message, [Billing], CancellationToken.None);
+
+        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None);
+
+        Assert.Equal(key, claimed!.Message.Key);
     }
 
     [Fact]
@@ -158,7 +214,7 @@ public sealed class SqliteMessageStoreTests : IDisposable
             new DateTimeOffset(2026, 8, 14, 1, 2, 3, TimeSpan.Zero));
         await store.AppendAsync(message, [Billing], CancellationToken.None);
 
-        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, Billing, CancellationToken.None);
+        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None);
 
         Assert.Equal(json, claimed!.Message.Payload.Json);
     }
@@ -171,7 +227,7 @@ public sealed class SqliteMessageStoreTests : IDisposable
         Message message = new(MessageId.From("msg-1"), Orders, MessagePayload.From("{}"), tokyo);
         await store.AppendAsync(message, [Billing], CancellationToken.None);
 
-        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, Billing, CancellationToken.None);
+        ClaimedDelivery? claimed = await store.TryClaimNextAsync(Orders, Billing, Lane.Single, CancellationToken.None);
 
         Assert.Equal(tokyo, claimed!.Message.EnqueuedAt);
     }
