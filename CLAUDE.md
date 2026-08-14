@@ -98,8 +98,10 @@
 - `src/Infrastructure` — SQLite。実装するのは Domain の口だけ
 - `src/Contracts` — プロセスをまたぐ契約（経路と線の上の型）。**依存ゼロ**
 - `src/Broker` — 発行と配送の口を HTTP で開くホスト。**ASP.NET を参照してよいのはここだけ**
+- `src/Client` — ブローカーへ外から繋ぐ側。利用者が書くのはプロセス内と同じ `IMessageSubscriber`
 - `tests/` — src と 1:1 で対応。テストプロジェクト名は src と同名で、
-  `.Tests` の接尾辞は `tests/Directory.Build.props` が付ける
+  `.Tests` の接尾辞は `tests/Directory.Build.props` が付ける。
+  例外は `tests/E2E` で、**ブローカーを本物の別プロセスとして起こす**（境界を確かめる唯一の層）
 - `docs/` — 開発の決めごと。**作業を始める前に読むこと**
 
 ## docs

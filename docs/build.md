@@ -55,3 +55,10 @@ PR と main への push で**上と同じ 3 コマンドを同じ順で**回す�
 - `tests/Infrastructure` — SQL が本当に正しいか、プロセスをまたいで残るか。実ファイルの SQLite で確かめる
 - `tests/Runtime` — 配送の意味論（at-least-once・順序・複数購読）。エンジンを実際に走らせ、
   実ファイルの SQLite と組で確かめる ── フェイクの store で通しても「本物でも残る」ことの証明にならない
+- `tests/Broker` — HTTP の口そのもの。`WebApplicationFactory` で叩く。SSE は手で読む
+  （確かめたいのが線の上の形なので、客の実装で読むと形の誤りが隠れる）
+- `tests/E2E` — **ブローカーを本物の別プロセスとして起こし**、`src/Client` で繋ぐ。
+  メモリ内の輸送で済ませない ── ここで確かめたいのはプロセスの境界そのもの。
+  起こすのは `dotnet run` ではなくビルド済みの dll（`dotnet run` はテストの実行中に
+  MSBuild を走らせる）。ブローカーは `src/Broker/bin/<構成>/<TFM>/` から探すので、
+  **`dotnet build` を通していないと落ちる**
