@@ -1,4 +1,5 @@
 using Netsoft.MessageQueues.Domain;
+using Netsoft.MessageQueues.Runtime.Remote;
 
 namespace Netsoft.MessageQueues.Runtime;
 
@@ -75,4 +76,15 @@ public sealed class SubscriberRegistry
     /// <summary>指定されたトピックを購読している購読者。</summary>
     public IReadOnlyList<IMessageSubscriber> For(Topic topic) =>
         [.. _subscribers.Where(s => s.Topic == topic)];
+
+    /// <summary>
+    /// 指定された購読が「プロセス外で処理される」と宣言されているなら、その宣言を返す。
+    /// </summary>
+    /// <remarks>
+    /// 外から繋ぎに来た相手に「その購読は宣言されていない」「レーンの番号が範囲外だ」を
+    /// 返すために要る。ここに無い購読へ繋がせると、繋がったのに何も届かない状態が
+    /// 正常に見えてしまう ── 宣言の綴り違いが、黙って永遠に待つ形で現れることになる。
+    /// </remarks>
+    public RemoteSubscriber? RemoteFor(Topic topic, SubscriptionName name) =>
+        _subscribers.OfType<RemoteSubscriber>().FirstOrDefault(s => s.Topic == topic && s.Name == name);
 }

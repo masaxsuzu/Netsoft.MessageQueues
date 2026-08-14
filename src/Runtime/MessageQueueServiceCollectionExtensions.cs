@@ -15,6 +15,8 @@ public static class MessageQueueServiceCollectionExtensions
     /// 発行と配送の部品一式を登録する。
     /// </summary>
     /// <remarks>
+    /// <paramref name="configure"/> が効くのは、ホストが <see cref="MessageQueueOptions"/> を
+    /// 自分で登録していないときだけ（登録は TryAdd で、先に置かれたものを上書きしない）。
     /// <see cref="IMessageStore"/> は登録しない ── 実装（SQLite）は Infrastructure に居て、
     /// Runtime はそれを参照しない。呼び出し側（ホスト）が
     /// <c>services.AddSingleton&lt;IMessageStore&gt;(new SqliteMessageStore(path))</c> のように
@@ -30,9 +32,12 @@ public static class MessageQueueServiceCollectionExtensions
         MessageQueueOptions options = new();
         configure?.Invoke(options);
 
-        services.AddSingleton(options);
+        // options と registry は TryAdd。**ホストが先に登録していればそちらが勝つ。**
+        // 設定ファイルから組み立てるホスト（Broker）は、値を DI の解決時まで読めないので
+        // 工場として自分で登録する ── 起動時に読んで固めると、外から差し替える道が塞がる。
+        services.TryAddSingleton(options);
         services.TryAddSingleton(TimeProvider.System);
-        services.AddSingleton(static provider =>
+        services.TryAddSingleton(static provider =>
             new SubscriberRegistry(provider.GetServices<IMessageSubscriber>()));
         services.AddSingleton<MessageQueueSignal>();
         services.AddSingleton<RemoteSubscriptionHub>();
