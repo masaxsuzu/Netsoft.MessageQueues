@@ -38,7 +38,7 @@ builder.Services.AddMessageQueues();
 // 錠を先に登録する。掴むのは StartingAsync なので順序に依らず一番外側で効くが、
 // 「まず錠、それから配送」という読み順をコードにも残しておく。
 builder.Services.AddHostedService<BrokerLockService>();
-builder.Services.AddHostedService<DeliveryEngineHostedService>();
+builder.Services.AddMessageQueueEngine();
 
 WebApplication app = builder.Build();
 app.MapMessageQueue();

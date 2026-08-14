@@ -14,6 +14,13 @@
 
     <!-- DI の登録の口（AddMessageQueues）を実際のコンテナで確かめるため。実装側が要る。 -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+
+    <!--
+      AddMessageQueueEngine を本物のホストに載せて確かめるため。
+      IHostedService を手で呼ぶ形にすると、確かめたい「ホストに載せるだけで動く」が
+      検証から抜け落ちる（起動と停止の順序はホストが決めている）。
+    -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
   </ItemGroup>
 
   <!--

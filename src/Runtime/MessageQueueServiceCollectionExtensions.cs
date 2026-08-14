@@ -48,6 +48,31 @@ public static class MessageQueueServiceCollectionExtensions
     }
 
     /// <summary>
+    /// 配送エンジンを、ホストの寿命に合わせて回す常駐を登録する。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 起動時にスキーマを用意し、停止時にはエンジンの完走を待つ
+    /// （<see cref="DeliveryEngineHostedService"/>）。<b>これを呼べば
+    /// <see cref="IMessageStore.InitializeAsync"/> も <see cref="DeliveryEngine.RunAsync"/> も
+    /// 呼び出し側が触らなくてよい。</b>
+    /// </para>
+    /// <para>
+    /// <see cref="AddMessageQueues"/> と分けてあるのは、<b>回さないホストが在るから</b>。
+    /// 発行するだけのプロセスや、外から繋ぐだけの客は配送エンジンを持たない
+    /// （配送するのは DB を持っている側 1 つだけ ── <c>docs/operating.md</c>）。
+    /// 一緒にすると、繋ぐだけの側が黙って 2 本目の配送ループになる。
+    /// </para>
+    /// </remarks>
+    public static IServiceCollection AddMessageQueueEngine(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddHostedService<DeliveryEngineHostedService>();
+        return services;
+    }
+
+    /// <summary>
     /// 購読者を 1 つ登録する。処理はこのプロセスの中で走る。
     /// </summary>
     public static IServiceCollection AddMessageSubscriber<TSubscriber>(this IServiceCollection services)

@@ -1,12 +1,19 @@
-using Netsoft.MessageQueues.Domain;
-using Netsoft.MessageQueues.Runtime;
+using Microsoft.Extensions.Hosting;
 
-namespace Netsoft.MessageQueues.Broker;
+using Netsoft.MessageQueues.Domain;
+
+namespace Netsoft.MessageQueues.Runtime;
 
 /// <summary>
 /// 配送エンジンをホストの寿命に合わせて回す。
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>登録の口は <see cref="MessageQueueServiceCollectionExtensions.AddMessageQueueEngine"/> だけ</b>
+/// なので internal にしてある。公開すると「自分で <c>AddHostedService</c> する」経路が並び、
+/// 二重に登録された瞬間にエンジンが 2 本走る ── レーンの中が直列という順序の約束が、
+/// 配線の書き方ひとつで消える。
+/// </para>
 /// <para>
 /// <b>スキーマの用意（<see cref="IMessageStore.InitializeAsync"/>）は口が開く前に済ませる。</b>
 /// 後ろへ回すと、起動直後の発行がテーブルの無い DB に当たる。
@@ -17,7 +24,7 @@ namespace Netsoft.MessageQueues.Broker;
 /// 破れない（未確認は再配送される）が、正常な停止でわざわざ重複を作る理由が無い。
 /// </para>
 /// </remarks>
-public sealed class DeliveryEngineHostedService : IHostedService
+internal sealed class DeliveryEngineHostedService : IHostedService
 {
     private readonly IMessageStore _store;
     private readonly DeliveryEngine _engine;
