@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Client\Client.csproj" />
+
+    <!--
+      ブローカーは参照ではなく**別のプロセスとして起こす**。ReferenceOutputAssembly=false は
+      「先にビルドさせるが、こちらへは混ぜない」の意味 ── 混ぜると、客の側が
+      ブローカーの型（ひいては SQLite）を掴んだまま「プロセス外から繋いだ」と
+      称することになり、この試験が確かめたいものが消える。
+    -->
+    <ProjectReference Include="..\..\src\Broker\Broker.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

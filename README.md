@@ -105,6 +105,32 @@ curl -X POST http://localhost:5000/subscriptions/orders/billing/lanes/0/deliveri
 - 失敗を伝えるなら `/nack`（`?reason=` を付けられる）。待ちを挟んで同じメッセージが再び届く
 - 詳細は [docs/operating.md](./docs/operating.md)
 
+### C# から繋ぐ
+
+`src/Client` を使うと、SSE も ack も自分で書かずに済む。**購読者は上とまったく同じ
+`IMessageSubscriber`** で、処理がどのプロセスで走るかだけが違う。
+
+```csharp
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddMessageSubscriber<BillingSubscriber>();   // 上と同じ登録の口
+builder.Services.AddMessageQueueClient(options =>
+    options.BaseAddress = new Uri("http://localhost:5000"));
+
+using IHost host = builder.Build();
+
+// 発行も同じ口（IMessagePublisher）。実装が HTTP になるだけ。
+IMessagePublisher publisher = host.Services.GetRequiredService<IMessagePublisher>();
+await publisher.PublishAsync(
+    Topic.From("orders"), MessagePayload.From("""{"orderId":42}"""), CancellationToken.None);
+
+await host.RunAsync();   // 購読は常駐が回す。接続が切れても繋ぎ直す
+```
+
+- ブローカー側に**同じ購読が宣言されていること**が前提（宣言は起動時。接続では増えない）
+- 購読者が例外を投げれば `nack` が飛び、待ちを挟んで再配送される
+- ブローカーを再起動しても客は繋ぎ直し、未配送のぶんから続く
+
 ## 開発
 
 ```bash
