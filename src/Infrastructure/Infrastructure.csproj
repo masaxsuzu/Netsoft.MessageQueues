@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SQLite は Microsoft.Data.Sqlite を直接使う。スキーマは起動時の
+    CREATE TABLE IF NOT EXISTS で作り切る固定のもので、版を進める仕組みも変更追跡も要らない。
+    EF Core を挟むと依存と起動コストが増えるだけ。
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+
+    <!--
+      Microsoft.Data.Sqlite 10.0.10 が連れてくる SQLitePCLRaw 2.1.11 には
+      既知の脆弱性があり、NU1903 が警告として上がる (TreatWarningsAsErrors なので落ちる)。
+      修正版へ明示的に引き上げる。Microsoft.Data.Sqlite 側が同じ系列を参照するようになれば
+      この行は消してよい。
+    -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+  </ItemGroup>
+
+  <!--
+    参照してよいのは Domain だけ。実装するのは Domain の口（IMessageStore）で、
+    それ以外の層を知る理由が無い。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\Domain.csproj" />
+  </ItemGroup>
+
+  <!--
+    SqliteConnections（接続を開く唯一の道）を tests から呼べるようにする。
+    busy_timeout は接続ごとの状態で、DB ファイルを後から覗いても確かめられないため。
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Netsoft.MessageQueues.Infrastructure.Tests" />
+  </ItemGroup>
+
+</Project>

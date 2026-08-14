@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    実行基盤。メッセージの発行（MessagePublisher）と配送（DeliveryEngine）の仕掛け。
+
+    ASP.NET を参照しない。購読者はプロセス内に閉じており（docs/operating.md）、
+    ここは HTTP の口を持たないので、参照が無いこと自体が
+    「配送基盤が HTTP の型に手を伸ばせない」という保証になる。
+
+    要るのは抽象だけ。ログの口（ILogger）と DI への登録の口（IServiceCollection）で、
+    どちらも Abstractions のパッケージに閉じている。
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\Domain.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,34 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!--
+    src 配下のプロジェクト名は短く保ち、Netsoft.MessageQueues の prefix はここで付ける。
+    ディレクトリ名を変えれば名前空間も追随するので、二重管理が起きない
+    （Netsoft.Jobs と同じ判断）。
+  -->
+  <PropertyGroup>
+    <AssemblyName>Netsoft.MessageQueues.$(MSBuildProjectName)</AssemblyName>
+    <RootNamespace>Netsoft.MessageQueues.$(MSBuildProjectName)</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    doc コメントを検査対象にする。親の TreatWarningsAsErrors により
+    CS1574（解決できない cref）と CS1573（param の付け漏れ）がビルドを落とす。
+    <see cref="..."/> は放っておくと「壊れても誰も気付かない参照」になる
+    （Netsoft.Jobs で実際に腐っていた）。
+
+    1591（public に doc が無い）は落とさない。doc を義務にすると、識別子を
+    言い換えるだけの <summary> が増える ── docs/conventions.md が禁じている
+    「How をなぞるコメント」を量産する圧力になる。
+    書くかどうかは書き手が決め、書いたものは機械が検査する、という線を引いている。
+
+    tests 側には入れていない。検査したいのは src の設計ログで、
+    テストの What はテスト名が担っている。
+  -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

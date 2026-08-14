@@ -1,0 +1,31 @@
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,md}]
+indent_size = 2
+
+[*.{csproj,props,targets}]
+indent_size = 2
+
+[*.sln]
+indent_style = tab
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+dotnet_style_readonly_field = true:warning
+
+# 使われていない using をビルドで落とす。既定は suggestion なので、上げないと誰も見ない。
+#
+# **src だけに掛ける。** IDE0005 は GenerateDocumentationFile が立っていないと動かず
+# （Roslyn の制約。立っていないと CSC がエラーで教えてくる）、あれを立てているのは src だけ
+# ── tests に入れない理由は src/Directory.Build.props の注記にある。
+[src/**.cs]
+dotnet_diagnostic.IDE0005.severity = warning
