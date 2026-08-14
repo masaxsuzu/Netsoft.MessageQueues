@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Netsoft.MessageQueues.Domain;
+using Netsoft.MessageQueues.Runtime.Remote;
 
 namespace Netsoft.MessageQueues.Runtime;
 
@@ -34,6 +35,7 @@ public static class MessageQueueServiceCollectionExtensions
         services.AddSingleton(static provider =>
             new SubscriberRegistry(provider.GetServices<IMessageSubscriber>()));
         services.AddSingleton<MessageQueueSignal>();
+        services.AddSingleton<RemoteSubscriptionHub>();
         services.AddSingleton<IMessagePublisher, MessagePublisher>();
         services.AddSingleton<DeliveryEngine>();
 
@@ -41,7 +43,7 @@ public static class MessageQueueServiceCollectionExtensions
     }
 
     /// <summary>
-    /// 購読者を 1 つ登録する。
+    /// 購読者を 1 つ登録する。処理はこのプロセスの中で走る。
     /// </summary>
     public static IServiceCollection AddMessageSubscriber<TSubscriber>(this IServiceCollection services)
         where TSubscriber : class, IMessageSubscriber
@@ -49,6 +51,37 @@ public static class MessageQueueServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton<IMessageSubscriber, TSubscriber>();
+        return services;
+    }
+
+    /// <summary>
+    /// プロセス外で処理される購読を 1 つ宣言する。
+    /// </summary>
+    /// <remarks>
+    /// <b>宣言はここ（起動時）で、接続では増えない。</b>配送行は発行の瞬間に居た購読へ
+    /// 向けて作られるので、繋いだ時点で購読が生まれる作りにすると、繋ぐまでに
+    /// 発行されたぶんが誰にも配られない。宣言しておけば、消費者がまだ居なくても
+    /// 未配送として積まれ、繋いだ時点で最初の 1 件から届く。
+    /// </remarks>
+    public static IServiceCollection AddRemoteSubscription(
+        this IServiceCollection services,
+        string topic,
+        string name,
+        int lanes = 1)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        Topic parsedTopic = Topic.From(topic);
+        SubscriptionName parsedName = SubscriptionName.From(name);
+
+        // レーン数の検査は SubscriberRegistry が構築時に行う。ここで先回りすると
+        // 上限を 2 か所に書くことになり、変えたときに片方だけ直る。
+        services.AddSingleton<IMessageSubscriber>(provider => new RemoteSubscriber(
+            parsedTopic,
+            parsedName,
+            lanes,
+            provider.GetRequiredService<RemoteSubscriptionHub>()));
+
         return services;
     }
 }
