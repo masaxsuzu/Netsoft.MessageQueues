@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    ブローカーのプロセス。DB と配送エンジンを持ち、発行と配送の口を HTTP で開く。
+
+    **ASP.NET を参照してよいのはここだけ。** Runtime が参照しないことが
+    「配送基盤が HTTP の型に手を伸ばせない」という保証になっている（Runtime.csproj の注記）。
+    ここは口そのものなので、逆に持っていないと仕事にならない。
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\Contracts.csproj" />
+    <ProjectReference Include="..\Domain\Domain.csproj" />
+    <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
+    <ProjectReference Include="..\Runtime\Runtime.csproj" />
+  </ItemGroup>
+
+</Project>

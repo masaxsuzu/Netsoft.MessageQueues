@@ -21,6 +21,10 @@
   配送ループはレーンごとに 1 本
 - **PartitionKey（パーティションキー）** — 同じレーンへ落とすための鍵。
   「同じキーの中は発行順」という順序の約束の単位
+- **Broker（ブローカー）** — DB と配送エンジンを持ち、HTTP の口を開くプロセス。
+  同じ DB に対して 1 つだけ
+- **Consumer（消費者）** — ブローカーへ繋いで配送を受け取る側。**Subscriber と混ぜない** ──
+  Subscriber は処理を書く型、Consumer は 1 レーンへの接続。消費者が居ない購読も存在し続ける
 - **`Handler` で終わる型名を付けない** — Netsoft.Jobs では `Handler` が「利用者が書く側」を
   指す語として予約されている。こちらの「利用者が書く側」は Subscriber なので、
   `Handler` という型名が現れたらどちらの意味でも誤り
@@ -41,3 +45,7 @@
   **各 csproj には書かない**（同名 csproj が複数あるため必ず片方がずれる）
 - 依存の向きは Runtime → Domain ← Infrastructure の一方通行。
   Runtime と Infrastructure は互いを知らず、配線はホスト（DI の登録）だけが知る
+- **ASP.NET を参照してよいのは `src/Broker` だけ。** Runtime が参照しないことが
+  「配送基盤が HTTP の型に手を伸ばせない」という保証になっている
+- **エンドポイントには判断を書かない。** 経路の文字列を解いて口を呼び、結果を HTTP へ
+  写すだけにする。解き方が 3 つの口で同じなら、そこは括る（`RemoteSubscriptionLookup`）
