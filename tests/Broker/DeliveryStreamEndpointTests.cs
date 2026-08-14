@@ -26,6 +26,9 @@ public sealed class DeliveryStreamEndpointTests : IDisposable
         Assert.Equal("""{"orderId":42}""", delivered.Payload);
         Assert.Null(delivered.Key);
         Assert.Equal(1, delivered.Attempt);
+
+        // 受け取る側が Message を組み立て直せるだけの項目が載っていること。
+        Assert.NotEqual(default, delivered.EnqueuedAt);
     }
 
     [Fact]

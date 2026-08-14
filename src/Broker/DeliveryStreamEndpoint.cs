@@ -133,6 +133,7 @@ internal static class DeliveryStreamEndpoint
             delivery.Message.Id.Value,
             delivery.Message.Topic.Value,
             delivery.Message.Key.IsEmpty ? null : delivery.Message.Key.Value,
+            delivery.Message.EnqueuedAt,
             delivery.Attempt,
             delivery.Message.Payload.Json);
 
