@@ -1,0 +1,36 @@
+# CI はローカルの検査（CLAUDE.md の「開発サイクル 4. 検査」）と同じ 3 コマンドを、
+# 同じ順で回すだけ。ここに独自の検査を足さない ── 手元で通ったのに CI だけ落ちる、
+# を作らないため。検査の中身を変えるときは docs/build.md と一緒に変える。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同じブランチの古い実行は追い越されたら止める。検査するのは最新のコミットだけでよい。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # SDK の版は global.json が唯一の出どころ。ここに版を書くと二重管理になる。
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build
+
+      - name: Test
+        # build は直前に済んでいる。--no-build はビルドし直しの時間ではなく、
+        # 「test が別の成果物を検査する」余地を消すために付けている。
+        run: dotnet test --no-build
+
+      - name: Format
+        run: dotnet format --verify-no-changes --no-restore
