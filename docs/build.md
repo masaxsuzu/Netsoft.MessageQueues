@@ -10,6 +10,16 @@ dotnet format --verify-no-changes   # 直すときは --verify-no-changes を外
 
 3 つすべてをコミットした木で通してから push する。落ちたまま次のタスクへ進まない。
 
+## CI
+
+GitHub Actions（[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)）が
+PR と main への push で**上と同じ 3 コマンドを同じ順で**回す。
+
+- **CI は再実行であって、検査の定義ではない。** 定義はこのファイルと CLAUDE.md にあり、
+  検査を変えるときは両方と workflow を一緒に変える。CI にしか無い検査を足すと、
+  手元で通ったのに CI だけ落ちる、が生まれる
+- SDK の版は `global.json` から取る（workflow に版を書かない。二重管理になる）
+
 ## テストの後始末
 
 一時ファイルを使うテストはこの形にそろえる。同じ注意書きを各ファイルに写さず、ここを参照する。
