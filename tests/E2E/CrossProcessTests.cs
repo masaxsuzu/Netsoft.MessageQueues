@@ -1,9 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-
-using Netsoft.MessageQueues.Client;
 using Netsoft.MessageQueues.Domain;
-using Netsoft.MessageQueues.Runtime;
 
 namespace Netsoft.MessageQueues.E2E.Tests;
 
@@ -99,46 +94,5 @@ public sealed class CrossProcessTests
 
         Assert.Equal(id, message.Id);
         Assert.Equal("""{"orderId":7}""", message.Payload.Json);
-    }
-
-    /// <summary>ブローカーへ繋ぐ側のホスト。利用者が書く配線と同じ形。</summary>
-    private sealed class ClientHost : IAsyncDisposable
-    {
-        private readonly IHost _host;
-
-        private ClientHost(IHost host)
-        {
-            _host = host;
-            Publisher = host.Services.GetRequiredService<IMessagePublisher>();
-        }
-
-        public IMessagePublisher Publisher { get; }
-
-        public static async Task<ClientHost> StartAsync(BrokerProcess broker, params IMessageSubscriber[] subscribers)
-        {
-            HostApplicationBuilder builder = Host.CreateEmptyApplicationBuilder(settings: null);
-
-            foreach (IMessageSubscriber subscriber in subscribers)
-            {
-                builder.Services.AddSingleton(subscriber);
-            }
-
-            builder.Services.AddLogging();
-            builder.Services.AddMessageQueueClient(options =>
-            {
-                options.BaseAddress = broker.BaseAddress;
-                options.ReconnectDelay = TimeSpan.FromMilliseconds(50);
-            });
-
-            IHost host = builder.Build();
-            await host.StartAsync();
-            return new ClientHost(host);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await _host.StopAsync();
-            _host.Dispose();
-        }
     }
 }

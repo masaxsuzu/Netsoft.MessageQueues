@@ -87,6 +87,29 @@ public sealed class BrokerProcess : IAsyncDisposable
         return broker;
     }
 
+    /// <summary>
+    /// 立ち上がらないことを確かめる。終了までに吐いた出力を返す。
+    /// </summary>
+    /// <exception cref="InvalidOperationException">立ち上がってしまった場合。</exception>
+    public static async Task<string> StartExpectingFailureAsync(
+        string databasePath,
+        params (string Topic, string Name, int Lanes)[] subscriptions)
+    {
+        BrokerProcess? started = null;
+        try
+        {
+            started = await StartAsync(databasePath, subscriptions);
+        }
+        catch (InvalidOperationException exception)
+        {
+            // 落ちた理由まで見たいので、例外の本文（溜めた出力を含む）を返す。
+            return exception.Message;
+        }
+
+        await started.DisposeAsync();
+        throw new InvalidOperationException("2 つ目のブローカーが立ち上がってしまいました。");
+    }
+
     /// <summary>ブローカーを落とす。DB はそのまま残るので、同じ場所で立て直せる。</summary>
     public async Task KillAsync()
     {

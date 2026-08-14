@@ -34,6 +34,10 @@ builder.Services.AddSingleton(provider => new SubscriberRegistry([
 
 // 上の 3 つを先に置いてあるので、AddMessageQueues の TryAdd はこれらを上書きしない。
 builder.Services.AddMessageQueues();
+
+// 錠を先に登録する。掴むのは StartingAsync なので順序に依らず一番外側で効くが、
+// 「まず錠、それから配送」という読み順をコードにも残しておく。
+builder.Services.AddHostedService<BrokerLockService>();
 builder.Services.AddHostedService<DeliveryEngineHostedService>();
 
 WebApplication app = builder.Build();
