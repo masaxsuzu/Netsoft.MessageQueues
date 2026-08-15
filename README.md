@@ -29,22 +29,25 @@ public sealed class BillingSubscriber : IMessageSubscriber
 }
 ```
 
-配線して動かす。store（SQLite）の登録だけはホストの仕事。
+配線する。store（SQLite）の登録だけはホストの仕事。
 
 ```csharp
-ServiceCollection services = new();
-services.AddSingleton<IMessageStore>(new SqliteMessageStore("messages.db"));
-services.AddMessageQueues();
-services.AddMessageSubscriber<BillingSubscriber>();
-// ILogger<DeliveryEngine> はホストのログ基盤から（無ければ NullLogger でよい）
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
-await using ServiceProvider provider = services.BuildServiceProvider();
-await provider.GetRequiredService<IMessageStore>().InitializeAsync(CancellationToken.None);
+builder.Services.AddSingleton<IMessageStore>(new SqliteMessageStore("messages.db"));
+builder.Services.AddMessageQueues();
+builder.Services.AddMessageQueueEngine();          // 配送エンジンを回す常駐
+builder.Services.AddMessageSubscriber<BillingSubscriber>();
 
-using CancellationTokenSource stop = new();
-Task run = provider.GetRequiredService<DeliveryEngine>().RunAsync(stop.Token);
+using IHost host = builder.Build();
+await host.StartAsync();   // スキーマの用意と配送の開始はここで済む
+```
 
-IMessagePublisher publisher = provider.GetRequiredService<IMessagePublisher>();
+発行する。
+
+```csharp
+IMessagePublisher publisher = host.Services.GetRequiredService<IMessagePublisher>();
+
 await publisher.PublishAsync(
     Topic.From("orders"),
     MessagePayload.From("""{"orderId":42}"""),
@@ -58,10 +61,11 @@ await publisher.PublishAsync(
     PartitionKey.From("order-42"),
     CancellationToken.None);
 
-// 終了時は取り消して待つ。確認前の配送は次の起動で再配送される。
-stop.Cancel();
-await run;
+await host.StopAsync();   // 確認前の配送は次の起動で再配送される
 ```
+
+ホストを使わないなら `AddMessageQueueEngine()` を省き、`IMessageStore.InitializeAsync` と
+`DeliveryEngine.RunAsync` を自分で呼ぶこともできる。
 
 ## 別のプロセスから使う
 

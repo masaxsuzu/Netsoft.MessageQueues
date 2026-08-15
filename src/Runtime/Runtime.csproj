@@ -12,6 +12,14 @@
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+
+    <!--
+      IHostedService のためだけに要る（AddMessageQueueEngine）。抽象だけのパッケージで、
+      上の「ASP.NET を参照しない」という線は破らない ── 配送エンジンを回すのが
+      ホストの寿命に紐づく仕事なのは、HTTP を持つかどうかとは無関係。
+    -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
+
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
   </ItemGroup>
 
